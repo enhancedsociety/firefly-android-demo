@@ -24,10 +24,27 @@ public class AddressActivity extends AppCompatActivity {
     private SurfaceView mySurfaceView;
     private QREader QRReader;
 
+    public static String decodeICAP(String s) {
+        String temp = s.substring(9);
+        int index = temp.indexOf("?") > 0 ? temp.indexOf("?") : temp.length();
+        String address = new BigInteger(temp.substring(0, index), 36).toString(16);
+        while (address.length() < 40) {
+            address = "0" + address;
+        }
+        return address;
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         Log.wtf(TAG, "onCreate");
+
+
+        // TODO remove
+        startActivity(new Intent(AddressActivity.this, BLEActivity.class));
+        finish();
+
+
     }
 
     private void setupQRReader() {
@@ -94,16 +111,6 @@ public class AddressActivity extends AppCompatActivity {
         } else {
 //            Log.wtf(TAG, "surfaceview is not null");
         }
-    }
-
-    public static String decodeICAP(String s) {
-        String temp = s.substring(9);
-        int index = temp.indexOf("?") > 0 ? temp.indexOf("?") : temp.length();
-        String address = new BigInteger(temp.substring(0, index), 36).toString(16);
-        while (address.length() < 40) {
-            address = "0" + address;
-        }
-        return address;
     }
 
     @Override

@@ -23,14 +23,28 @@ import github.nisrulz.qreader.QRDataListener;
 import github.nisrulz.qreader.QREader;
 
 public class SignatureActivity extends AppCompatActivity {
+    public static final String A_TEST_MESSAGE = "A test message";
     private static final int MY_PERMISSIONS_REQUEST_CAMERA = 124;
     private static final String TAG = "coiso";
-    public static final String A_TEST_MESSAGE = "A test message";
     private SurfaceView mySurfaceView;
     private QREader QRReader;
 
     private String sig_r = "";
     private String sig_s = "";
+
+    public static String verifySig(String msg, String r_hex, String s_hex) {
+        byte[] r = Numeric.hexStringToByteArray(r_hex);
+        byte[] s = Numeric.hexStringToByteArray(s_hex);
+        Sign.SignatureData sigData = new Sign.SignatureData((byte) 28, r, s);
+
+        try {
+            BigInteger b = Sign.signedMessageToKey(msg.getBytes(), sigData);
+            return Keys.getAddress(b);
+        } catch (SignatureException e) {
+            Log.w(TAG, e.getLocalizedMessage());
+            return "";
+        }
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -134,20 +148,6 @@ public class SignatureActivity extends AppCompatActivity {
             }
         });
 
-    }
-
-    public static String verifySig(String msg, String r_hex, String s_hex) {
-        byte[] r = Numeric.hexStringToByteArray(r_hex);
-        byte[] s = Numeric.hexStringToByteArray(s_hex);
-        Sign.SignatureData sigData = new Sign.SignatureData((byte) 28, r, s);
-
-        try {
-            BigInteger b = Sign.signedMessageToKey(msg.getBytes(), sigData);
-            return Keys.getAddress(b);
-        } catch (SignatureException e) {
-            Log.w(TAG, e.getLocalizedMessage());
-            return "";
-        }
     }
 
     @Override
