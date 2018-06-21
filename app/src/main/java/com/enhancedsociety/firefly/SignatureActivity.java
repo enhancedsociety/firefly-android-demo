@@ -1,6 +1,9 @@
 package com.enhancedsociety.firefly;
 
 import android.Manifest;
+import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.le.AdvertiseCallback;
+import android.bluetooth.le.AdvertiseSettings;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.support.v4.app.ActivityCompat;
@@ -12,6 +15,7 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
 
+import org.web3j.crypto.Hash;
 import org.web3j.crypto.Keys;
 import org.web3j.crypto.Sign;
 import org.web3j.utils.Numeric;
@@ -24,6 +28,7 @@ import github.nisrulz.qreader.QREader;
 
 public class SignatureActivity extends AppCompatActivity {
     public static final String A_TEST_MESSAGE = "A test message";
+    public static final byte SIG_V = (byte) 28;
     private static final int MY_PERMISSIONS_REQUEST_CAMERA = 124;
     private static final String TAG = "coiso";
     private SurfaceView mySurfaceView;
@@ -31,15 +36,25 @@ public class SignatureActivity extends AppCompatActivity {
 
     private String sig_r = "";
     private String sig_s = "";
+    private String eth_address;
+    private String original_message;
 
     public static String verifySig(String msg, String r_hex, String s_hex) {
         byte[] r = Numeric.hexStringToByteArray(r_hex);
         byte[] s = Numeric.hexStringToByteArray(s_hex);
-        Sign.SignatureData sigData = new Sign.SignatureData((byte) 28, r, s);
+        Sign.SignatureData sigData = new Sign.SignatureData(SIG_V, r, s);
+
+        String prefixed_msg = "\u0019Ethereum Signed Message:\n" + msg.length() + msg;
+        byte[] msg_hashed_b = Hash.sha3(prefixed_msg.getBytes());
+//        Log.wtf(TAG, "Message hash " + Numeric.toHexString(msg_hashed_b));
+//        Log.wtf(TAG, "Sig R " + r_hex);
+//        Log.wtf(TAG, "Sig S " + s_hex);
+//        Log.wtf(TAG, "Sig V " + Numeric.toHexString(new byte[]{SIG_V}));
 
         try {
-            BigInteger b = Sign.signedMessageToKey(msg.getBytes(), sigData);
-            return Keys.getAddress(b);
+            BigInteger pubkey = Sign.signedMessageToKey(prefixed_msg.getBytes(), sigData);
+            String address = Keys.getAddress(pubkey);
+            return "0x" + address;
         } catch (SignatureException e) {
             Log.w(TAG, e.getLocalizedMessage());
             return "";
@@ -49,6 +64,23 @@ public class SignatureActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        eth_address = getIntent().getStringExtra("eth_address");
+        original_message = getIntent().getStringExtra("original_message");
+
+        BluetoothAdapter.getDefaultAdapter().getBluetoothLeAdvertiser().stopAdvertising(new AdvertiseCallback() {
+            @Override
+            public void onStartSuccess(AdvertiseSettings settingsInEffect) {
+                super.onStartSuccess(settingsInEffect);
+                Log.wtf(TAG, "stopAdvertising.onStartSuccess");
+            }
+
+            @Override
+            public void onStartFailure(int errorCode) {
+                super.onStartFailure(errorCode);
+                Log.wtf(TAG, "stopAdvertising.onStartFailure=" + errorCode);
+            }
+        });
     }
 
     private void setupQRReader() {
@@ -62,31 +94,6 @@ public class SignatureActivity extends AppCompatActivity {
                 setContentView(R.layout.activity_sig);
 
                 mySurfaceView = findViewById(R.id.camera_view);
-
-                Button b = findViewById(R.id.button2);
-                b.setOnClickListener(new View.OnClickListener() {
-                    @Override
-                    public void onClick(View v) {
-                        final TextView label = findViewById(R.id.textLabel);
-                        final TextView text = findViewById(R.id.textView);
-                        sig_r = "";
-                        sig_s = "";
-                        text.post(new Runnable() {
-                            @Override
-                            public void run() {
-                                label.setText("");
-                                text.setText("");
-                            }
-                        });
-                        final Button btn = findViewById(R.id.button3);
-                        btn.post(new Runnable() {
-                            @Override
-                            public void run() {
-                                btn.setVisibility(View.VISIBLE);
-                            }
-                        });
-                    }
-                });
 
                 QRReader = new QREader.Builder(this, mySurfaceView, new QRDataListener() {
                     @Override
@@ -122,7 +129,7 @@ public class SignatureActivity extends AppCompatActivity {
         if (sig_r.isEmpty() || sig_s.isEmpty()) {
             return;
         }
-        final String verification_addr = verifySig(A_TEST_MESSAGE, sig_r, sig_s);
+        final String verification_addr = verifySig(original_message, sig_r, sig_s);
 
         final TextView label = findViewById(R.id.textLabel);
         final TextView text = findViewById(R.id.textView);
@@ -130,8 +137,10 @@ public class SignatureActivity extends AppCompatActivity {
         text.post(new Runnable() {
             @Override
             public void run() {
-                label.setText("VERIFICATION ADDRESS");
-                text.setText(verification_addr);
+                Log.wtf(TAG, "VERIFICATION ADDRESS " + verification_addr);
+                Log.wtf(TAG, "SIGNING ADDRESS " + eth_address);
+                label.setText("signature is");
+                text.setText(verification_addr.equals(eth_address) ? "CORRECT" : "WRONG");
                 final Button btn = findViewById(R.id.button3);
                 btn.post(new Runnable() {
                     @Override
@@ -142,7 +151,7 @@ public class SignatureActivity extends AppCompatActivity {
                 btn.setOnClickListener(new View.OnClickListener() {
                     @Override
                     public void onClick(View v) {
-                        finish();
+                        finishAffinity();
                     }
                 });
             }

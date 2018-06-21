@@ -38,13 +38,6 @@ public class AddressActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         Log.wtf(TAG, "onCreate");
-
-
-        // TODO remove
-        startActivity(new Intent(AddressActivity.this, BLEActivity.class));
-        finish();
-
-
     }
 
     private void setupQRReader() {
@@ -78,8 +71,9 @@ public class AddressActivity extends AppCompatActivity {
                                 btn.setOnClickListener(new View.OnClickListener() {
                                     @Override
                                     public void onClick(View v) {
-                                        // TODO pass the acquired address along to validate signature on SignatureActivity
-                                        startActivity(new Intent(AddressActivity.this, BLEActivity.class));
+                                        Intent i = new Intent(AddressActivity.this, BLEActivity.class);
+                                        i.putExtra("eth_address", address);
+                                        startActivity(i);
                                         finish();
                                     }
                                 });

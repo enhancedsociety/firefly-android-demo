@@ -4,8 +4,9 @@ import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.le.AdvertiseCallback;
 import android.bluetooth.le.AdvertiseData;
 import android.bluetooth.le.AdvertiseSettings;
-import android.bluetooth.le.BluetoothLeAdvertiser;
+import android.content.Intent;
 import android.os.Bundle;
+import android.os.Handler;
 import android.os.ParcelUuid;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
@@ -17,20 +18,17 @@ import java.util.UUID;
 import javax.crypto.Cipher;
 import javax.crypto.spec.SecretKeySpec;
 
+import okio.ByteString;
+
 public class BLEActivity extends AppCompatActivity {
 
+    public static final String KEY = "29231d6f2761547092e6a81664fd0eb7";
+    public static final int BLECAST_DURATION_MS = 500;
+    // TODO the content to sign shouldn't be hardcoded
+    public static final String BATATA = "batatavelha";
     private static final String TAG = "coisoBLE";
-    private BluetoothLeAdvertiser advertiser;
-
-    static byte[] convertTo3ByteArray(int i) {
-
-        byte[] ret = new byte[3];
-        ret[0] = (byte) (i & 0xff);
-        ret[1] = (byte) ((i >> 8) & 0xff);
-        ret[2] = (byte) (0x00);
-
-        return ret;
-    }
+    private String eth_address;
+    private AdvertiseCallback advertisingCallback;
 
     public static UUID getGuidFromByteArray(byte[] bytes) {
         ByteBuffer bb = ByteBuffer.wrap(bytes);
@@ -43,7 +41,21 @@ public class BLEActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_ble);
 
-        advertiser = BluetoothAdapter.getDefaultAdapter().getBluetoothLeAdvertiser();
+        eth_address = getIntent().getStringExtra("eth_address");
+
+        advertisingCallback = new AdvertiseCallback() {
+            @Override
+            public void onStartSuccess(AdvertiseSettings settingsInEffect) {
+                super.onStartSuccess(settingsInEffect);
+                Log.wtf(TAG, "Advertising onStartSuccess");
+            }
+
+            @Override
+            public void onStartFailure(int errorCode) {
+                Log.e(TAG, "Advertising onStartFailure: " + errorCode);
+                super.onStartFailure(errorCode);
+            }
+        };
     }
 
     @Override
@@ -58,13 +70,12 @@ public class BLEActivity extends AppCompatActivity {
         AdvertiseSettings settings = new AdvertiseSettings.Builder()
                 .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
                 .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
-                .setConnectable(true)
+                .setConnectable(false)
                 .build();
 
 
         try {
-            String batata = "batatavelha";
-
+            // Based on
             // https://github.com/ricmoo/BLECast#protocol
 
             ByteArrayOutputStream block = new ByteArrayOutputStream();
@@ -82,30 +93,38 @@ public class BLEActivity extends AppCompatActivity {
             // Firefly specific byte
             // https://github.com/firefly/wallet/blob/master/source/firefly/firefly.ino#L375
             block.write(0x02);// block data - command byte
-            block.write(batata.getBytes());// block data
+            block.write(BATATA.getBytes());// block data
 
             byte c[] = block.toByteArray();
 
-            Log.wtf(TAG, "len block " + c.length);
+            //Log.wtf(TAG, "len block " + c.length);
 
             CRC24 crc = new CRC24();
             for (byte b : c) {
                 crc.update(b);
             }
-            byte[] crcHeader = convertTo3ByteArray(crc.getValue());
+            int crc_val = crc.getValue();
+            //Log.wtf(TAG, "crc val " + crc_val);
+            byte[] crcHeader = ByteBuffer.allocate(4).putInt(crc_val).array();
 
             ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-            outputStream.write(crcHeader); // Checksum of the remaining block
+            outputStream.write(crcHeader[1]); // Checksum of the remaining block as 3 bytes
+            outputStream.write(crcHeader[2]);
+            outputStream.write(crcHeader[3]);
             outputStream.write(c); // Remaining block
 
             byte[] unciphered = outputStream.toByteArray();
-            Log.wtf(TAG, "len unciphered " + unciphered.length);
 
             Cipher cifra = android.os.Build.VERSION.SDK_INT >= 26 ? Cipher.getInstance("AES_128/ECB/NoPadding") : Cipher.getInstance("AES/ECB/NoPadding");
-            SecretKeySpec sks = new SecretKeySpec("29231d6f2761547092e6a81664fd0eb7".getBytes(), "AES");
+            byte[] ba = ByteString.decodeHex(KEY).toByteArray();
+            SecretKeySpec sks = new SecretKeySpec(ba, "AES");
             cifra.init(Cipher.ENCRYPT_MODE, sks);
             byte[] ciphered = cifra.doFinal(unciphered);
-            Log.wtf(TAG, "len ciphered " + ciphered.length);
+            //Log.wtf(TAG, "len ciphered " + ciphered.length);
+
+            //Log.wtf(TAG, "len unciphered " + unciphered.length);
+            //String joined = Arrays.toString(unciphered);
+            //Log.wtf(TAG, "unciphered " + joined);
 
             UUID serializedUUID = getGuidFromByteArray(ciphered);
             Log.wtf(TAG, "final uuid " + serializedUUID);
@@ -115,26 +134,24 @@ public class BLEActivity extends AppCompatActivity {
                     .addServiceUuid(pUuid)
                     .build();
 
-            AdvertiseCallback advertisingCallback = new AdvertiseCallback() {
-                @Override
-                public void onStartSuccess(AdvertiseSettings settingsInEffect) {
-                    super.onStartSuccess(settingsInEffect);
-                    Log.wtf(TAG, "Advertising onStartSuccess");
-                }
 
-                @Override
-                public void onStartFailure(int errorCode) {
-                    Log.e(TAG, "Advertising onStartFailure: " + errorCode);
-                    super.onStartFailure(errorCode);
-                }
-            };
+            BluetoothAdapter.getDefaultAdapter().getBluetoothLeAdvertiser().startAdvertising(settings, data, advertisingCallback);
 
-            advertiser.startAdvertising(settings, data, advertisingCallback);
-            //startActivity(new Intent(BLEActivity.this, SignatureActivity.class));
-            //finish();
+            Handler h = new Handler();
+            h.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    BluetoothAdapter.getDefaultAdapter().getBluetoothLeAdvertiser().stopAdvertising(advertisingCallback);
+                    Intent i = new Intent(BLEActivity.this, SignatureActivity.class);
+                    i.putExtra("eth_address", eth_address);
+                    i.putExtra("original_message", BATATA);
+                    startActivity(i);
+                    finish();
+                }
+            }, BLECAST_DURATION_MS);
 
         } catch (Exception e) {
-            Log.wtf(TAG, "NOPE " + e.getLocalizedMessage());
+            Log.wtf(TAG, "Unexpected error " + e.getLocalizedMessage());
         }
 
     }
@@ -142,19 +159,8 @@ public class BLEActivity extends AppCompatActivity {
     @Override
     protected void onPause() {
         super.onPause();
+        Log.wtf(TAG, "onPause");
 
-        advertiser.stopAdvertising(new AdvertiseCallback() {
-            @Override
-            public void onStartSuccess(AdvertiseSettings settingsInEffect) {
-                super.onStartSuccess(settingsInEffect);
-                Log.wtf(TAG, "Stopped advertising");
-            }
-
-            @Override
-            public void onStartFailure(int errorCode) {
-                super.onStartFailure(errorCode);
-                Log.wtf(TAG, "Stopped advertising with error " + errorCode);
-            }
-        });
+        BluetoothAdapter.getDefaultAdapter().getBluetoothLeAdvertiser().stopAdvertising(advertisingCallback);
     }
 }
