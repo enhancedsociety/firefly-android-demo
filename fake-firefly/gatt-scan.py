@@ -6,7 +6,8 @@ from collections import defaultdict
 import dbus
 import gatt
 import qrcode
-from Crypto.Cipher import AES
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.backends import default_backend
 from eth_account.account import Account
 from eth_account.messages import defunct_hash_message
 from PIL import Image
@@ -39,8 +40,9 @@ def sbyte(n):
 
 
 def decrypt(b):
-    obj = AES.new(bytes.fromhex(firefly_key), AES.MODE_ECB)
-    res = obj.decrypt(b)
+    obj = Cipher(algorithms.AES(bytes.fromhex(firefly_key)),
+                 modes.ECB(), backend=default_backend()).decryptor()
+    res = obj.update(b) + obj.finalize()
     return res
 
 

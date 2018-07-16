@@ -1,5 +1,5 @@
 PyGObject==3.28.3
-pycrypto==2.6.1
+cryptography==2.2.2
 gatt==0.2.7
 web3==4.3.0
 qrcode==6.0
